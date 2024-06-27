@@ -2,10 +2,63 @@
 Author: Mujdei Ruben
 
 Implement the Action class in your classes that perform actions.
+How to create a new class action:
+
+    class CustomAction(Action):
+
+        def run(self):
+            try:
+                # Example of frame stack
+
+                # Send frame, passive response
+                self.g.frame(self.id)
+
+                # Verify response and provide error message if the frame is not the desired one
+                self._passive_response(sid, "Error message")
+
+                # Send frame, request data
+                self.g.frame_request_data(self.id)
+
+                # Collect frame and data from frame, then process it with a custom method
+                data_response = self._data_from_frame(self._passive_response(sid, "Error message"))
+                self.process_data(data_response)
+
+                # Send all the frames that you need and collect the response if necessary as in the example above
+                .......
+
+                # Generate a JSON response. Need to override this method and write the implementation
+                response_json = self._to_json()
+
+                # Shutdown the CAN bus interface
+                self.bus.shutdown()
+
+                return response_json
+            
+            except CustomError as e:
+                # Handle custom errors from frames
+                self.bus.shutdown()
+                return e.message
+
 """
 
 import can
+import json
+import datetime
+import time
 from generate_frames import GenerateFrame as GF
+
+SESSION_CONTROL = 0x10
+RESET_ECU = 0x11
+READ_BY_ADDRESS = 0x23
+READ_BY_IDENTIFIER = 0x022
+AUTHENTICATION = 0x29
+ROUTINE_CONTROL = 0X31
+WRITE_BY_IDENTIFIER = 0X2E
+READ_DTC = 0X19
+CLEAR_DTC = 0X14
+REQUEST_DOWNLOAD = 0X83
+TRANSFER_DATA = 0X36
+REQUEST_TRANSFER_EXIT = 0X37
 
 IDENTIFIER_VERSION_SOFTWARE_MCU = 0x1010
 
@@ -27,6 +80,11 @@ class ReadByAddress(FrameWithData):
         byte_start_data = addr_siz_len % 0x10 + addr_siz_len // 0x10
         data = msg.data[3 + byte_start_data:]
         return data
+class AuthenticationSeed(FrameWithData):
+    """Extracts seed from frame request seed."""
+    def _data_from_frame(self, msg: can.Message):
+        data = msg.data[3:]
+        return data
 
 class CustomError(Exception):
     """Custom exception class for handling specific update errors."""
@@ -45,7 +103,7 @@ class Action:
     - g: Instance of GenerateFrame for generating CAN bus frames.
     """
 
-    def __init__(self, bus, my_id, id_ecu):
+    def __init__(self, bus : can.bus.BusABC, my_id, id_ecu: list):
         self.bus = bus
         self.my_id = my_id
         self.id_ecu = id_ecu
@@ -117,13 +175,14 @@ class Action:
         response = self._collect_response(sid)
         if response is None:
             print(error_str)
-            response_json = self._to_json("interrupted", 1)
+            response_json = self._to_json_error("interrupted", 1)
             raise CustomError(response_json)
         return response
 
     def _data_from_frame(self, msg: can.Message):
         """
-        Extracts data from the CAN message based on the frame type.
+        Extracts data from the CAN message based on the frame type. Implemented for 
+        ReadByIdentifier and ReadByAddress
         
         Args:
         - msg: The CAN message to extract data from.
@@ -131,9 +190,13 @@ class Action:
         Returns:
         - The extracted data if the frame type is recognized, otherwise None.
         """
+        #debugging
+        #if msg is None:
+            #return [1,2,3,4,5]
         handlers = {
             0x62: ReadByIdentifier(),
             0x63: ReadByAddress(),
+            0x29: AuthenticationSeed(),
         }
         handler = handlers.get(msg.data[1] if msg.data[0] != 0x10 else msg.data[2])
         if handler:
@@ -143,3 +206,17 @@ class Action:
     # Implement in the child class
     def _to_json(self, status, no_errors):
         pass
+    def _to_json_error(self, error, no_errors):
+        response_to_frontend = {
+            "ERROR": error,
+            "No of errors": no_errors,
+            "time_stamp": datetime.datetime.now().isoformat()
+        }
+        return json.dumps(response_to_frontend)
+    def _list_to_number(self, list: list):
+        number = ""
+        for item in list:
+            if item <= 0xF:
+                number += "0"
+            number += hex(item)[2:]
+        return number

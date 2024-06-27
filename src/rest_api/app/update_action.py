@@ -6,14 +6,10 @@ Future implementations:
     Start Routines
 How to use?
     u = Updates(bus, 0x23, 0x12)
-    u.update_to(0x12)
+    u.update_to(id_ecu, 0x12)
 '''
 
-import json
-import datetime
-import time
 from actions import *  # Assuming this imports necessary actions
-from generate_frames import GenerateFrame as GF
 
 class Updates(Action):
     """
@@ -26,7 +22,7 @@ class Updates(Action):
     - g: Instance of GenerateFrame for generating CAN bus frames.
     """
 
-    def update_to(self, version, data=[]):
+    def update_to(self, ecu_id, version, data=[]):
         """
         Method to update the software of the ECU to a specified version.
 
@@ -42,7 +38,7 @@ class Updates(Action):
           indicating that the latest version is already installed.
         """
         self.data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-        self.id = self.my_id + self.id_ecu
+        self.id = self.my_id + ecu_id
         
         try:
             # Verify if the current version matches the desired version
@@ -51,7 +47,7 @@ class Updates(Action):
 
             # Change session to initiate download process
             self.g.session_control(self.id, 0x02)
-            self._passive_response(0x10, "Error changing session control")
+            self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             # Download the software update data
             print("Downloading... Please wait")
@@ -60,10 +56,10 @@ class Updates(Action):
             # Change session back and reset the ECU to apply the update
             print("Download finished, restarting ECU...")
             self.g.session_control(self.id, 0x01)
-            self._passive_response(0x10, "Error changing session control")
+            self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             self.g.ecu_reset(self.id)
-            self._passive_response(0x11, "Error trying to reset ECU")
+            self._passive_response(RESET_ECU, "Error trying to reset ECU")
 
             # Add a delay to wait until the ECU completes the reset process
             time.sleep(1)
@@ -95,14 +91,14 @@ class Updates(Action):
         - CustomError: If any error occurs during the download process.
         """
         self.g.request_download(self.id, 0x01, 0x01, 0xFFFF)
-        self._passive_response(0x34, "Error requesting download")
+        self._passive_response(REQUEST_DOWNLOAD, "Error requesting download")
 
         self.g.transfer_data_long(self.id, 0x01, data)
         self.g.transfer_data_long(self.id, 0x01, data, False)
-        self._passive_response(0x36, "Error transferring data")
+        self._passive_response(TRANSFER_DATA, "Error transferring data")
 
         self.g.request_transfer_exit(self.id)
-        self._passive_response(0x37, "Error requesting transfer exit")
+        self._passive_response(REQUEST_TRANSFER_EXIT, "Error requesting transfer exit")
 
     def _verify_version(self, version):
         """
@@ -116,7 +112,7 @@ class Updates(Action):
           indicating that the latest version is already installed.
         """
         self.g.read_data_by_identifier(self.id, IDENTIFIER_VERSION_SOFTWARE_MCU)
-        response = self._passive_response(0x22, "Error verifying version")
+        response = self._passive_response(READ_BY_IDENTIFIER, "Error verifying version")
         
         current_version = self._version_to_int(self._data_from_frame(response))
         
@@ -136,7 +132,7 @@ class Updates(Action):
         - CustomError: If any error occurs during the error checking process.
         """
         self.g.request_read_dtc_information(self.id, 0x01, 0x01)
-        response = self._passive_response(0x19, "Error reading DTC")
+        response = self._passive_response(READ_DTC, "Error reading DTC")
         
         if response is not None:
             number_of_dtc = response.data[5]
