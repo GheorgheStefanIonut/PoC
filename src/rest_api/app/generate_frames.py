@@ -1,5 +1,7 @@
 import can 
+from logger_config import logger_frame
 
+@logger_frame('generate_frame.log')
 class GenerateFrame:
     def __init__(self, bus):
         self.bus = bus
@@ -283,3 +285,15 @@ class GenerateFrame:
             digits += 1
             number //=10
         return digits
+    
+can_interface = "vcan0"
+id = 0x123
+data = [3,0,0,0]
+
+generateFrame = GenerateFrame(can_interface)
+
+generateFrame.read_memory_by_adress(id, 0x1234, 0x56, data)
+generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data)
+generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data, False)
+
+generateFrame.bus.shutdown()
