@@ -1,13 +1,10 @@
 import can 
-from logger_config import logger_frame, logger_to_file
+from logger_config import logger_frame
 
 @logger_frame('generate_frame.log')
-@logger_to_file("test.log")
 class GenerateFrame:
     def __init__(self, bus):
         self.bus = bus
-        self.logger = logging.getLogger('GenerateFrameLogger')
-        replace_print_with_log(self.logger)
     
     def send_frame(self, id, data):
         message = can.Message(arbitration_id=id, data=data, is_extended_id=False)
