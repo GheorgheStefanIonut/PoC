@@ -97,12 +97,6 @@ class ReceiveFrames
   void printFrames(const struct can_frame &frame);
 
   /**
-   * @brief Function to send test frame on CANBus.
-   * 
-   */
-  void sendTestFrame();
-
-  /**
    * @brief Set listenAPI member to false.
    */
   void stopListenAPI();
@@ -146,27 +140,7 @@ class ReceiveFrames
    */
   const uint8_t* getECUsUp() const;
 
-  std::map<uint8_t, std::chrono::steady_clock::time_point> ecu_timers;
-  std::chrono::seconds timeout_duration;
-  std::thread timer_thread;
-  bool running;
-  
- protected:
-  /* The socket from where we read the frames */
-  int socket_canbus;
-  int socket_api;
-  const uint32_t hex_value_id = 0x10;
-  std::queue<struct can_frame> frame_queue;
-  std::mutex queue_mutex;
-  std::condition_variable queue_cond_var;
-  bool listen_api;
-  bool listen_canbus;
-  HandleFrames handler;
-  GenerateFrames generate_frames;
-  /* Vector contains all the ECUs up ids */
-  uint8_t ecus_up[4] = {0};
-
-  /**
+    /**
    * @brief Starts timer_thread and sets running flag on true.
    */
   void startTimerThread();
@@ -186,6 +160,26 @@ class ReceiveFrames
    * @param ecu_id The identifier of the ECU (will be added to the list).
    */
   void resetTimer(uint8_t ecu_id);
+
+  std::map<uint8_t, std::chrono::steady_clock::time_point> ecu_timers;
+  std::chrono::seconds timeout_duration;
+  std::thread timer_thread;
+  bool running;
+  
+ protected:
+  /* The socket from where we read the frames */
+  int socket_canbus;
+  int socket_api;
+  const uint32_t hex_value_id = 0x10;
+  std::queue<struct can_frame> frame_queue;
+  std::mutex queue_mutex;
+  std::condition_variable queue_cond_var;
+  bool listen_api;
+  bool listen_canbus;
+  HandleFrames handler;
+  GenerateFrames generate_frames;
+  /* Vector contains all the ECUs up ids */
+  uint8_t ecus_up[4] = {0};
 };
 
 #endif /* POC_SRC_MCU_RECEIVE_FRAME_MODULE_H */

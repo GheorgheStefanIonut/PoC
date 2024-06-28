@@ -30,6 +30,8 @@ bool ReceiveFrames::receiveFramesFromCANBus()
     {
         /* Read frames from the CAN socket */
         int nbytes = read(socket_canbus, &frame, sizeof(frame));
+        LOG_INFO(MCULogger.GET_LOGGER(),"Captured a frame on the CANBus socket");
+        
         if (nbytes < 0)
         {
             LOG_ERROR(MCULogger.GET_LOGGER(),"Read Error");
@@ -43,12 +45,13 @@ bool ReceiveFrames::receiveFramesFromCANBus()
                 std::lock_guard<std::mutex> lock(queue_mutex);
                 
                 /* Take receiver_id */
-                uint8_t dest_id = frame.can_id & 0xFF;
+                uint8_t received_id = frame.can_id & 0xFF;
 
                 /* If frame is for MCU module, for API or test frame */
-                if( dest_id == hex_value_id || dest_id == 0xFF || dest_id == 0xFA)
+                if( received_id == hex_value_id || received_id == 0xFF || received_id == 0xFA)
                 {
                     frame_queue.push(frame);
+                    LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Pass a valid Module ID: 0x{:x} and frame added to the processing queue.", int(frame.can_id)));
                 }
             }
             /* Notify one waiting thread that a new frame has been added to the queue */
@@ -65,6 +68,8 @@ bool ReceiveFrames::receiveFramesFromAPI()
     {
         /* Read frames from the CAN socket */
         int nbytes = read(socket_api, &frame, sizeof(frame));
+        LOG_INFO(MCULogger.GET_LOGGER(),"Captured a frame on the API socket");
+
         if (nbytes < 0)
         {
             LOG_ERROR(MCULogger.GET_LOGGER(),"Read Error");
@@ -77,6 +82,7 @@ bool ReceiveFrames::receiveFramesFromAPI()
                 /* Lock the queue before adding the frame to ensure thread safety */
                 std::lock_guard<std::mutex> lock(queue_mutex);
                 frame_queue.push(frame);
+                LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Pass a valid Module ID: 0x{:x} and frame added to the processing queue.", int(frame.can_id)));
                 
             }
             /* Notify one waiting thread that a new frame has been added to the queue */
@@ -92,7 +98,6 @@ bool ReceiveFrames::receiveFramesFromAPI()
  */
 void ReceiveFrames::processQueue() 
 {
-    LOG_INFO(MCULogger.GET_LOGGER(),"Frame processing:...");
     while (true)
     {
         /* Wait until the queue is not empty, then lock the queue */
@@ -102,6 +107,7 @@ void ReceiveFrames::processQueue()
         /* Extract the first element from the queue */
         struct can_frame frame = frame_queue.front();
         frame_queue.pop();
+        LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Frame with ID: 0x{:x} is taken from processing queue", int(frame.can_id)));
         /* Unlock the queue to allow other threads to add frames */
         lock.unlock();
 
@@ -113,14 +119,14 @@ void ReceiveFrames::processQueue()
         /* Last byte: id_sender */
         uint8_t sender_id = (frame.can_id >> 8) & 0xFF;
         /* First byte: id_receiver or id_api */
-        uint8_t dest_id = frame.can_id & 0xFF;
+        uint8_t received_id = frame.can_id & 0xFF;
 
         /* Compare the CAN ID with the expected hexValueId */
-        if (dest_id == hex_value_id) 
+        if (received_id == hex_value_id) 
         {
             if (frame.data[1] == 0xff) 
             {
-                LOG_INFO(MCULogger.GET_LOGGER(),"Notification from the ECU that it is up");
+                LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Frame received to notify MCU that ECU with ID: 0x{:x} is up", sender_id));
                 /* Set the corresponding value from the array with the ECU id */
                 switch(sender_id)
                 {
@@ -141,24 +147,22 @@ void ReceiveFrames::processQueue()
                 }
 
                 resetTimer(sender_id);
-            } 
-            else 
+            }
+            else
             {
-                LOG_INFO(MCULogger.GET_LOGGER(),"Frame for MCU Service");
+                LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Received frame for MCU to execute service with SID: 0x{:x}", frame.data[1]));
+                LOG_INFO(MCULogger.GET_LOGGER(), "Calling HandleFrames module to parse the frame and execute the service.");
                 handler.handleFrame(frame);
             }
         }
-        else if (dest_id == 0xFA) {
-            LOG_INFO(MCULogger.GET_LOGGER(),"Frame for API Service");
+        else if (received_id == 0xFA) {
+            LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Frame received from ECU with ID: 0x{:x} sent for API", sender_id));
+            LOG_INFO(MCULogger.GET_LOGGER(), "Frame sent to API on API socket with response from ECU with ID: 0x{:x}.", sender_id);
             std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
-        } 
-        else if (dest_id == 0xFF) 
-        {
-            /* Test frame between MCU and ECU */
-            LOG_INFO(MCULogger.GET_LOGGER(),"Received the test frame ");
+            generate_frames.sendFrame(0x10fa, data, socket_api, DATA_FRAME);
         }
 
-        if (sender_id == 0xFA && dest_id != hex_value_id) 
+        if (sender_id == 0xFA && received_id != hex_value_id) 
         {
             if(frame.data[1] == 0x99)
             {
@@ -167,13 +171,15 @@ void ReceiveFrames::processQueue()
                     id: MCU_id + API_id 
                     data: {PCI_L, SID(0xD9), MCU_id, BATTERY_id, DOORS_id, ENGINE_id, ECU4_id}
                 */
-               LOG_INFO(MCULogger.GET_LOGGER(),"Response with all ECUs up.");
+                LOG_INFO(MCULogger.GET_LOGGER(), "Received frame to update status of ECUs still up.");
+                LOG_INFO(MCULogger.GET_LOGGER(), "Frame sent to API on API socket to update status of ECUs still up.");
                 generate_frames.sendFrame(0x10FA,{0x07, 0xD9, (uint8_t)hex_value_id, ecus_up[0], ecus_up[1], ecus_up[2], ecus_up[3]}, socket_api, DATA_FRAME);
             }
             else
             {
                 std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
-                LOG_INFO(MCULogger.GET_LOGGER(),"Frame for ECU Service");
+                LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Received frame for ECU with ID: 0x{:x} to execute service with SID: 0x{:x}", received_id, frame.data[1]));
+                LOG_INFO(MCULogger.GET_LOGGER(), "Frame sent on CANBus socket for ECU with ID: 0x{:x}", received_id);
                 generate_frames.sendFrame(frame.can_id, data);
             }
         }
@@ -195,33 +201,18 @@ void ReceiveFrames::resetTimer(uint8_t ecu_id) {
  */
 void ReceiveFrames::printFrames(const struct can_frame &frame)
 {
-    std::ostringstream oss;
-    LOG_INFO(MCULogger.GET_LOGGER(),"-------------------\n");
-    LOG_INFO(MCULogger.GET_LOGGER(),"Processing CAN frame from queue:");
-    LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("CAN ID: 0x{:x}", frame.can_id));
-    LOG_INFO(MCULogger.GET_LOGGER(), fmt::format("Data Length: {}", int(frame.can_dlc)));
-    oss << "Data: ";
-    for (uint8_t itr = 0; itr < frame.can_dlc; ++itr)
+    LOG_INFO(MCULogger.GET_LOGGER(), "");
+    LOG_INFO(MCULogger.GET_LOGGER(), "Received CAN frame");
+    LOG_INFO(MCULogger.GET_LOGGER(), "Module ID: 0x{0:x}", int(frame.can_id));
+    LOG_INFO(MCULogger.GET_LOGGER(), "Data Length: {}", int(frame.can_dlc));
+    std::ostringstream dataStream;
+    dataStream << "Data:";
+    for (int frame_byte = 0; frame_byte < frame.can_dlc; ++frame_byte) 
     {
-        oss << fmt::format("{} ", int(frame.data[itr]));
+        dataStream << " 0x" << std::hex << int(frame.data[frame_byte]);
     }
-    LOG_INFO(MCULogger.GET_LOGGER(), oss.str());
-}
-
-/*
- * Function to send test frame 
-*/
-void ReceiveFrames::sendTestFrame()
-{
-    if(listen_canbus)
-    {
-        /* Set the CAN ID to 0xFF */
-        int can_id = 0xFF;
-        /* Set the data to an empty vector*/
-        std::vector<uint8_t> data;
-        /* Call Generate_frames and SendFrame with the test frame */
-        generate_frames.sendFrame(can_id, data);
-    }
+    LOG_INFO(MCULogger.GET_LOGGER(), "{}", dataStream.str());
+    LOG_INFO(MCULogger.GET_LOGGER(), "");
 }
 
 void ReceiveFrames::stopListenAPI()
@@ -286,7 +277,7 @@ void ReceiveFrames::timerCheck()
                     uint8_t ecu_id = it->first;
                     /* Send request frame */
                     std::vector<uint8_t> data = {0x01};
-                    generate_frames.sendFrame(0x1011, data);
+                    generate_frames.sendFrame(0x11, data);
                     it = ecu_timers.erase(it);
                 } else {
                     ++it;

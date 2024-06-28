@@ -221,13 +221,10 @@ void HandleFrames::processFrameData(canid_t frame_id, uint8_t sid, std::vector<u
             {
                 processNrc(frame_id, sid, frame_data[3]);
             }
-            else if (is_multi_frame)
+            else
             {
-                LOG_INFO(MCULogger.GET_LOGGER(), "WriteDataByIdentifier called with multiple frames.");
-            }
-            else 
-            {
-                LOG_INFO(MCULogger.GET_LOGGER(), "WriteDataByIdentifier called with one frame.");
+                LOG_INFO(MCULogger.GET_LOGGER(), "WriteDataByIdentifier service called.");
+                WriteDataByIdentifierService write_data_by_identifier_service(frame_id, frame_data);
             }
             break;
         case 0x14:
