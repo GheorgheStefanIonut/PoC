@@ -202,6 +202,40 @@ class Action:
         if handler:
             return handler._data_from_frame(msg)
         return None
+    
+    def _read_by_identifier(self,id, identifier):
+        """
+        Function to read data from a specific identifier. The function requests, reads the data, and processes it.
+
+        Args:
+        - identifier: Identifier of the data.
+
+        Returns:
+        - Data as a string.
+        """
+        self.g.read_data_by_identifier(id, identifier)
+        frame_response = self._passive_response(READ_BY_IDENTIFIER, f"Error reading data from identifier {identifier}")
+        data = self._data_from_frame(frame_response)
+        data_str = self._list_to_number(data)
+        return data_str
+
+    def algorithm(self, seed):
+        """
+        Method to generate a key based on the seed.
+        """
+        pass
+
+    def _authentication(self,id):
+        """
+        Function to authenticate. Makes the proper request to the ECU.
+        """
+        self.g.authentication_seed(id)
+        frame_response = self._passive_response(AUTHENTICATION, "Error requesting seed")
+        seed = self._data_from_frame(frame_response)
+        key = self.algorithm(seed)
+        #key = [0, 1, 2, 3, 4]  # Placeholder key, replace with actual key generation logic
+        self.g.authentication_key(id, key)
+        self._passive_response(AUTHENTICATION, "Error sending key")
 
     # Implement in the child class
     def _to_json(self, status, no_errors):

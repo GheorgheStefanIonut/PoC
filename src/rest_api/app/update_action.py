@@ -6,7 +6,7 @@ Future implementations:
     Start Routines
 How to use?
     u = Updates(bus, 0x23, 0x12)
-    u.update_to(id_ecu, 0x12)
+    u.update_to(id_ecu, "12")
 '''
 
 from actions import *  # Assuming this imports necessary actions
@@ -22,7 +22,7 @@ class Updates(Action):
     - g: Instance of GenerateFrame for generating CAN bus frames.
     """
 
-    def update_to(self, ecu_id, version, data=[]):
+    def update_to(self, ecu_id, version:str, data=[]):
         """
         Method to update the software of the ECU to a specified version.
 
@@ -110,11 +110,8 @@ class Updates(Action):
         Raises:
         - CustomError: If the current software version matches the desired version,
           indicating that the latest version is already installed.
-        """
-        self.g.read_data_by_identifier(self.id, IDENTIFIER_VERSION_SOFTWARE_MCU)
-        response = self._passive_response(READ_BY_IDENTIFIER, "Error verifying version")
-        
-        current_version = self._version_to_int(self._data_from_frame(response))
+        """        
+        current_version = self._read_by_identifier(IDENTIFIER_VERSION_SOFTWARE_MCU)
         
         if current_version == version:
             print("Already installed latest version")
@@ -156,18 +153,3 @@ class Updates(Action):
             "time_stamp": datetime.datetime.now().isoformat()
         }
         return json.dumps(response_to_frontend)
-
-    def _version_to_int(self, array):
-        """
-        Private method to convert an array of bytes representing version information to an integer.
-
-        Args:
-        - array: Array of bytes representing version information.
-
-        Returns:
-        - Integer representation of the version.
-        """
-        n = 0
-        for element in array[::-1]:
-            n = n * 100 + element
-        return n
