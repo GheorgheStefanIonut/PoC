@@ -1,59 +1,53 @@
 #include "TesterPresent.h"
 
-TesterPresent::TesterPresent(GenerateFrames& generateFrames, ReceiveFrames& receiveFrames, uint32_t can_id, int s3_timer)
-    : genFrames(generateFrames), recFrames(receiveFrames), canId(can_id), s3Timer(s3_timer), listen_canbus(true) {
+TesterPresent::TesterPresent(uint32_t can_id, int socket, Logger &logger)
+    : can_id_(can_id), generate_frames_(socket, logger), receive_frames_(socket, -1), running_(false), tester_present_(false) 
+{
+
 }
 
-TesterPresent::~TesterPresent() {
+TesterPresent::~TesterPresent() 
+{
     stop();
 }
 
 void TesterPresent::start() {
-    listen_canbus = true;
-    receiverThread = std::thread(&TesterPresent::receiveFrames, this);
-    senderThread = std::thread(&TesterPresent::sendTesterPresent, this);
+    running_ = true;
+    monitor_thread_ = std::thread(&TesterPresent::monitorTesterPresence, this);
+    receive_frames_.startListenCANBus();
 }
 
 void TesterPresent::stop() {
-    listen_canbus = false;
-    if (receiverThread.joinable()) {
-        receiverThread.join();
-    }
-    if (senderThread.joinable()) {
-        senderThread.join();
+    running_ = false;
+    receive_frames_.stopListenCANBus();
+    if (monitor_thread_.joinable()) {
+        monitor_thread_.join();
     }
 }
 
-void TesterPresent::sendTesterPresent() {
-    while (listen_canbus) {
-        try {
-            genFrames.testerPresent(canId, true);  // send Tester Present request
-            std::this_thread::sleep_for(std::chrono::seconds(s3Timer - 1));
-        } catch (const std::exception& ex) {
-            std::cerr << "Exception in sendTesterPresent: " << ex.what() << std::endl;
-            listen_canbus = false;
-        }
-    }
+bool TesterPresent::isTesterPresent() const {
+    return tester_present_;
 }
 
-void TesterPresent::receiveFrames() {
-    while (listen_canbus) {
-        if (recFrames.receiveFramesFromCANBus()) {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            queue_cond_var.wait(lock, [this]() { return !frame_queue.empty(); });
-            
-            while (!frame_queue.empty()) {
-                can_frame frame = frame_queue.front();
-                frame_queue.pop();
+void TesterPresent::monitorTesterPresence() {
+    while (running_) {
+        std::unique_lock<std::mutex> lock(mtx_);
+        cv_.wait_for(lock, S3_TIMEOUT, [this] { 
+            return std::chrono::steady_clock::now() - last_tester_present_time_ < S3_TIMEOUT; 
+        });
 
-                if (frame.can_id == canId && frame.data[1] == 0x3E) {
-                    // Received a positive response for Tester Present
-                    std::cout << "Tester Present Acknowledged" << std::endl;
-                }
-            }
+        if (std::chrono::steady_clock::now() - last_tester_present_time_ >= S3_TIMEOUT) {
+            tester_present_ = false;
         } else {
-            std::cerr << "Failed to receive frames from CAN bus" << std::endl;
-            listen_canbus = false;
+            tester_present_ = true;
         }
+    }
+}
+
+void TesterPresent::handleReceivedFrame(const can_frame &frame) {
+    if (frame.can_id == can_id_ && frame.data[1] == 0x3E) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        last_tester_present_time_ = std::chrono::steady_clock::now();
+        generate_frames_.testerPresent(can_id_, true);
     }
 }
