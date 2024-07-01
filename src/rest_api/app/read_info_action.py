@@ -2,10 +2,15 @@
 Author: Mujdei Ruben
 Date: June 2024
 Use the class ReadInfo to read information from different ECUs.
+Methods:
+    -read_from_battery(): Read info from battery module
+    -read_from_custom(identifiers[]): Read specific data
 
 How to use:
-    u = ReadInfo(bus, 0x23, [0x11, 0x12, 0x13])
+    u = ReadInfo(0x23, [0x11, 0x12, 0x13])
     u.read_from_battery()
+    #or
+    u.read_from_custom([0x1234, 0x6543])
 """
 
 import json
@@ -42,7 +47,6 @@ class ReadInfo(Action):
     ReadInfo class to read information from different ECUs.
 
     Attributes:
-    - bus: CAN bus interface for communication.
     - my_id: Identifier for the device initiating the update.
     - id_ecu: Identifier for the specific ECU being updated.
     - g: Instance of GenerateFrame for generating CAN bus frames.
@@ -60,7 +64,7 @@ class ReadInfo(Action):
         id = self.my_id * 0x100 + id_battery
 
         try:
-            self.g.session_control(id, 0x01)
+            self.generate.session_control(id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             self._authentication(id)
@@ -85,21 +89,27 @@ class ReadInfo(Action):
             return e.message
     
     def read_from_custom(self, identifiers:list):
+        """
+        Method to read information from specific identifier.
+
+        Returns:
+        - JSON response.
+        """
         id_battery = self.id_ecu[1]
         id = self.my_id * 0x100 + id_battery
         try:
-            self.g.session_control(id, 0x01)
+            self.generate.session_control(id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             self._authentication(id)
 
-            data = []
+            #Read each data from identifier            
+            data_collected = []
             for identifier in identifiers:
-                data += self._read_by_identifier(id,identifier)
+                data_collected.append(self._read_by_identifier(id,identifier))
 
             module = ElementToJSON()
-
-            response_json = self._to_json(module, data)
+            response_json = self._to_json(module, data_collected)
             # Shutdown the CAN bus interface
             self.bus.shutdown()
 
@@ -116,12 +126,5 @@ class ReadInfo(Action):
         Args:
         - module: An instance of ToJSON or its subclasses.
         - data: Data collected from the ECU.
-
-        Returns:
-        - JSON-formatted response containing status, errors, and timestamp.
         """
         return module._to_json(data)
-        
-bus = can.interface.Bus(channel="vcan0", interface='socketcan')
-u = ReadInfo(bus, 0x23, [0x11,0x12,0x13])
-print(u.read_from_battery())

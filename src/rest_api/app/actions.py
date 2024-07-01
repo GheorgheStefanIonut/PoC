@@ -1,8 +1,42 @@
 """
 Author: Mujdei Ruben
 
-Implement the Action class in your classes that perform actions.
-How to create a new class action:
+The Action class is a utility class designed to be inherited by specific action classes.
+It provides a set of pre-created methods that facilitate various tasks such as reading frames,
+processing these frames, creating responses, and additional functionalities. This class
+serves as a foundation, offering reusable components and standardizing the way frames are
+sent and received.
+
+Please note that only the protected methods can be used in your child class.
+
+    _passive_response()
+        Collects the response frame from a specific request, verifies it,
+        and returns the data carried by the frame.
+
+    _data_from_frame()
+        Extracts just the data from the CAN message based on the frame type (excluding SIDs, identifiers, sub-functions, etc).
+        Works for read by address, read by identifier, and authentication seed.
+
+    _authentication()
+        Sends a sequence of frames for authentication.
+
+    _read_by_identifier()
+        Sends a frame for reading by identifier, collects the response, and returns the data carried.
+
+    _to_json()
+        Needs to be overridden and implemented in the child class.
+
+    _to_json_error()
+        Creates a JSON response for error messages.
+
+    _list_to_number()
+        Transforms a list of numbers into a string. Example: [1, 2, 3] -> "010203".
+
+PS: Use: raise CustomError(response_json), every time you want to send a premature JSON response and finish the program.
+Check _passive_response() as example.
+
+
+How to create a new class action, example:
 
     class CustomAction(Action):
 
@@ -11,13 +45,13 @@ How to create a new class action:
                 # Example of frame stack
 
                 # Send frame, passive response
-                self.g.frame(self.id)
+                self.generate.frame(self.id)
 
                 # Verify response and provide error message if the frame is not the desired one
                 self._passive_response(sid, "Error message")
 
                 # Send frame, request data
-                self.g.frame_request_data(self.id)
+                self.generate.frame_request_data(self.id)
 
                 # Collect frame and data from frame, then process it with a custom method
                 data_response = self._data_from_frame(self._passive_response(sid, "Error message"))
@@ -97,19 +131,18 @@ class Action:
     Base class for actions involving CAN bus communication.
     
     Attributes:
-    - bus: CAN bus interface for communication.
     - my_id: Identifier for the device initiating the action.
     - id_ecu: Identifier for the specific ECU being communicated with.
     - g: Instance of GenerateFrame for generating CAN bus frames.
     """
 
-    def __init__(self, bus : can.bus.BusABC, my_id, id_ecu: list):
-        self.bus = bus
+    def __init__(self, my_id, id_ecu: list):
+        self.bus = can.interface.Bus(channel="vcan0", interface='socketcan')
         self.my_id = my_id
         self.id_ecu = id_ecu
-        self.g = GF(bus)
+        self.generate = GF(self.bus)
 
-    def _collect_response(self, sid: int):
+    def __collect_response(self, sid: int):
         """
         Collects the response message from the CAN bus.
         
@@ -136,11 +169,11 @@ class Action:
             msg = self.bus.recv(3)
         if flag:
             msg = msg_ext
-        if msg is not None and self._verify_frame(msg, sid):
+        if msg is not None and self.__verify_frame(msg, sid):
             return msg
         return None
 
-    def _verify_frame(self, msg: can.Message, sid: int):
+    def __verify_frame(self, msg: can.Message, sid: int):
         """
         Verifies the validity of the received CAN message.
         
@@ -172,7 +205,7 @@ class Action:
         Raises:
         - CustomError: If the response is invalid.
         """
-        response = self._collect_response(sid)
+        response = self.__collect_response(sid)
         if response is None:
             print(error_str)
             response_json = self._to_json_error("interrupted", 1)
@@ -213,13 +246,13 @@ class Action:
         Returns:
         - Data as a string.
         """
-        self.g.read_data_by_identifier(id, identifier)
+        self.generate.read_data_by_identifier(id, identifier)
         frame_response = self._passive_response(READ_BY_IDENTIFIER, f"Error reading data from identifier {identifier}")
         data = self._data_from_frame(frame_response)
         data_str = self._list_to_number(data)
         return data_str
 
-    def algorithm(self, seed):
+    def __algorithm(self, seed):
         """
         Method to generate a key based on the seed.
         """
@@ -229,12 +262,12 @@ class Action:
         """
         Function to authenticate. Makes the proper request to the ECU.
         """
-        self.g.authentication_seed(id)
+        self.generate.authentication_seed(id)
         frame_response = self._passive_response(AUTHENTICATION, "Error requesting seed")
         seed = self._data_from_frame(frame_response)
-        key = self.algorithm(seed)
+        key = self.__algorithm(seed)
         #key = [0, 1, 2, 3, 4]  # Placeholder key, replace with actual key generation logic
-        self.g.authentication_key(id, key)
+        self.generate.authentication_key(id, key)
         self._passive_response(AUTHENTICATION, "Error sending key")
 
     # Implement in the child class

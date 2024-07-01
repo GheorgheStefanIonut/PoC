@@ -4,8 +4,9 @@ Use class Update to update the software of an ECU
 Future implementations:
     Download from cloud
     Start Routines
+
 How to use?
-    u = Updates(bus, 0x23, 0x12)
+    u = Updates( 0x23, [0x11,0x12,0x13])
     u.update_to(id_ecu, "12")
 '''
 
@@ -16,7 +17,6 @@ class Updates(Action):
     Update class for managing software updates on an Electronic Control Unit (ECU).
     
     Attributes:
-    - bus: CAN bus interface for communication.
     - my_id: Identifier for the device initiating the update.
     - id_ecu: Identifier for the specific ECU being updated.
     - g: Instance of GenerateFrame for generating CAN bus frames.
@@ -46,7 +46,7 @@ class Updates(Action):
             print("Proceeding to download new version")
 
             # Change session to initiate download process
-            self.g.session_control(self.id, 0x02)
+            self.generate.session_control(self.id, 0x02)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             # Download the software update data
@@ -55,10 +55,10 @@ class Updates(Action):
 
             # Change session back and reset the ECU to apply the update
             print("Download finished, restarting ECU...")
-            self.g.session_control(self.id, 0x01)
+            self.generate.session_control(self.id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
-            self.g.ecu_reset(self.id)
+            self.generate.ecu_reset(self.id)
             self._passive_response(RESET_ECU, "Error trying to reset ECU")
 
             # Add a delay to wait until the ECU completes the reset process
@@ -90,14 +90,14 @@ class Updates(Action):
         Raises:
         - CustomError: If any error occurs during the download process.
         """
-        self.g.request_download(self.id, 0x01, 0x01, 0xFFFF)
+        self.generate.request_download(self.id, 0x01, 0x01, 0xFFFF)
         self._passive_response(REQUEST_DOWNLOAD, "Error requesting download")
 
-        self.g.transfer_data_long(self.id, 0x01, data)
-        self.g.transfer_data_long(self.id, 0x01, data, False)
+        self.generate.transfer_data_long(self.id, 0x01, data)
+        self.generate.transfer_data_long(self.id, 0x01, data, False)
         self._passive_response(TRANSFER_DATA, "Error transferring data")
 
-        self.g.request_transfer_exit(self.id)
+        self.generate.request_transfer_exit(self.id)
         self._passive_response(REQUEST_TRANSFER_EXIT, "Error requesting transfer exit")
 
     def _verify_version(self, version):
@@ -111,7 +111,7 @@ class Updates(Action):
         - CustomError: If the current software version matches the desired version,
           indicating that the latest version is already installed.
         """        
-        current_version = self._read_by_identifier(IDENTIFIER_VERSION_SOFTWARE_MCU)
+        current_version = self._read_by_identifier(self.id, IDENTIFIER_VERSION_SOFTWARE_MCU)
         
         if current_version == version:
             print("Already installed latest version")
@@ -128,7 +128,7 @@ class Updates(Action):
         Raises:
         - CustomError: If any error occurs during the error checking process.
         """
-        self.g.request_read_dtc_information(self.id, 0x01, 0x01)
+        self.generate.request_read_dtc_information(self.id, 0x01, 0x01)
         response = self._passive_response(READ_DTC, "Error reading DTC")
         
         if response is not None:
