@@ -13,9 +13,15 @@
 #include "../include/MCULogger.h"
 
 #include <thread>
-
+namespace MCU{
 class MCUModule {
 public:
+    std::unordered_map<uint16_t, std::vector<uint8_t>> mcu_data = {
+        {0x01A0, {0}},  /* Energy Level */
+        {0x01B0, {0}},  /* Voltage */
+        {0x01C0, {0}},  /* Percentage */
+        {0x01D0, {0}}   /* State of Charge */
+    };
     /** 
      * @brief Constructor that takes the interface number as an argument.
      * When the constructor is called, it creates a new interface with the
@@ -56,5 +62,6 @@ private:
     CreateInterface* create_interface;
     ReceiveFrames* receive_frames;
 };
-
-#endif 
+extern MCUModule mcu;
+}
+#endif
