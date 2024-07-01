@@ -1,26 +1,23 @@
 import can 
+from logger_config import setup_custom_logger, log_debug_message, log_info_message, log_warning_message, log_error_message, log_critical_message
 
+
+log_filename = 'logger.log'
+logger, logger_frame = setup_custom_logger(log_filename)
+
+@logger_frame
 class GenerateFrame:
-    def __init__(self, bus):
-        self.bus = bus
+    def __init__(self, can_interface):
+        self.bus = can.interface.Bus(channel=can_interface, bustype='socketcan')
+
     
     def send_frame(self, id, data):
-        message = can.Message(arbitration_id=id, data=data, is_extended_id=False)
+        message = can.Message(arbitration_id=id, data=data)
         try: 
             self.bus.send(message)
         except can.CanError:
-            print("Message not sent")
+            log_error_message(logger, "Message not sent")
 
-    def read_frame(self, timeout=1.0):
-        try:
-            message = self.bus.recv(timeout)
-            if message is None:
-                return None
-            return message
-        except can.CanError:
-            print("Error receiving message")
-            return None
-            
     def control_frame(self, id):
         data = [0x30, 0x00, 0x00, 0x00]
         self.send_frame(id, data)
@@ -37,7 +34,7 @@ class GenerateFrame:
         else:
             data = [2, 0x50, sub_funct]
 
-        self.send_frame(id, data)
+        self.send_frame(id, data) 
     
     def ecu_reset(self, id, response = False):
 
@@ -58,7 +55,7 @@ class GenerateFrame:
                 data = [len(response) + 3, 0x62, identifier//0x100, identifier%0x100] + response
 
             else:
-                print("Error")
+                log_error_message(logger, "Error")
                 return
 
         self.send_frame(id, data)
@@ -77,7 +74,7 @@ class GenerateFrame:
 
     def response_read_dtc_information(self, id, sts_ava_mask, dtc_format, dtc_count):
 
-        data = [5, 0x59, 0x01, sts_ava_mask, dtc_format, dtc_count]
+        data = [3, 0x59, 0x01, sts_ava_mask, dtc_format, dtc_count]
 
         self.send_frame(id, data)
 
@@ -101,14 +98,13 @@ class GenerateFrame:
                 self.__add_to_list(data, memory_size)
                 data = data + response
             else:
-                print("Error, please use considering read_memory_by_adress_long")
+                log_error_message(logger, "Error, please use considering read_memory_by_adress_long")
                 return
         self.send_frame(id, data)
 
     def read_memory_by_adress_long(self, id, memory_address, memory_size, response = [], first_frame=True):
         address_length = (self.__count_digits(memory_address)+1)//2
         size_length = (self.__count_digits(memory_size)+1)//2
-
         address_size_length = address_length + size_length*0x10
         pci_l = address_length + size_length + 2 + len(response)
         bytes_first_frame = 8 - address_length - size_length - 4
@@ -128,7 +124,6 @@ class GenerateFrame:
             #Send remaining data
             if len(last_data)%7:
                 data = [0x21 + len(last_data)//7] + last_data[len(last_data)- len(last_data)%7:]              
-
         self.send_frame(id, data)
 
     def request_transfer_exit(self, id, response = False):
@@ -136,6 +131,7 @@ class GenerateFrame:
             data = [1, 0x77]
         else:
              data = [1, 0x37]
+
         self.send_frame(id, data)
 
     def clear_diagnostic_information(self, id, group_of_dtc=0xFFFFFF, response=False):
@@ -204,7 +200,6 @@ class GenerateFrame:
         data = [size_length+ address_length + 3,0x34, data_format_identifier, memory_length]
         self.__add_to_list(data, memory_address)
         self.__add_to_list(data, memory_size)
-
         self.send_frame(id, data)
 
     def request_download_response(self, id, max_number_block):
@@ -219,7 +214,7 @@ class GenerateFrame:
             if len(transfer_data) <=5:
                 data = [len(transfer_data) + 2, 0x36, block_sequence_counter] + transfer_data
             else:
-                print("ERROR: To many data to transfer, consider using Transfer_data_long!")
+                log_error_message(logger, "ERROR: To many data to transfer, consider using Transfer_data_long!")
                 return
         else:
             data =[0x2, 0x76, block_sequence_counter]
@@ -245,7 +240,7 @@ class GenerateFrame:
             if len(data_parameter) <=4:
                 data =[len(data_parameter) +3 , 0x2E, identifier // 0x100, identifier%0x100] + data_parameter
             else:
-                print("ERROR: To many data parameters, consider using write_data_by_identifier_long!")
+                log_error_message(logger, "ERROR: To many data parameters, consider using write_data_by_identifier_long!")
                 return
         else:
             data =[3, 0x6E, identifier // 0x100, identifier%0x100]
@@ -283,3 +278,18 @@ class GenerateFrame:
             digits += 1
             number //=10
         return digits
+
+
+can_interface = "vcan0"
+id = 0x123
+data = [3,0,0,0]
+
+generateFrame = GenerateFrame(can_interface)
+
+generateFrame.read_memory_by_adress(id, 0x1234, 0x56, data)
+generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data)
+generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data, False)
+
+
+generateFrame.bus.shutdown()
+

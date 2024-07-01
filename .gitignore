@@ -1,3 +1,4 @@
 src/rest_api/app/venv
 src/rest_api/app/log
 src/rest_api/app/__pycache__
+src/rest_api/__pycache__
