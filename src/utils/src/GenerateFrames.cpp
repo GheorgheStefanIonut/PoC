@@ -1,5 +1,7 @@
 #include "../include/GenerateFrames.h"
-
+GenerateFrames::GenerateFrames()
+    : logger(logger)
+{}
 GenerateFrames::GenerateFrames(int socket, Logger& logger)
     : logger(logger), socket(socket)
 {
