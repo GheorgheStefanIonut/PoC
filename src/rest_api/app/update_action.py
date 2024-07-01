@@ -43,18 +43,19 @@ class Updates(Action):
         try:
             # Verify if the current version matches the desired version
             self._verify_version(version)
-            print("Proceeding to download new version")
+            log_info_message(logger, "Proceeding to download new version")
 
             # Change session to initiate download process
+            log_info_message(logger, "Changing session to programming")
             self.generate.session_control(self.id, 0x02)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             # Download the software update data
-            print("Downloading... Please wait")
+            log_info_message(logger, "Downloading... Please wait")
             self._download_data(data)
 
             # Change session back and reset the ECU to apply the update
-            print("Download finished, restarting ECU...")
+            log_info_message(logger, "Download finished, restarting ECU...")
             self.generate.session_control(self.id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
@@ -62,9 +63,11 @@ class Updates(Action):
             self._passive_response(RESET_ECU, "Error trying to reset ECU")
 
             # Add a delay to wait until the ECU completes the reset process
+            log_info_message(logger, "Waiting until ECU is up")
             time.sleep(1)
 
             # Check for errors in the updated ECU
+            log_info_message(logger, "Checking for errors..")
             no_errors = self._check_errors()
 
             # Generate a JSON response indicating the success of the update
@@ -73,6 +76,7 @@ class Updates(Action):
             # Shutdown the CAN bus interface
             self.bus.shutdown()
 
+            log_info_message(logger, "Sending JSON")
             return response_json
         
         except CustomError as e:
@@ -111,10 +115,11 @@ class Updates(Action):
         - CustomError: If the current software version matches the desired version,
           indicating that the latest version is already installed.
         """        
+        log_info_message(logger, "Reading current version")
         current_version = self._read_by_identifier(self.id, IDENTIFIER_VERSION_SOFTWARE_MCU)
         
         if current_version == version:
-            print("Already installed latest version")
+            log_info_message(logger, "Already installed latest version")
             response_json = self._to_json("already installed", 0)
             raise CustomError(response_json)
 
@@ -133,7 +138,7 @@ class Updates(Action):
         
         if response is not None:
             number_of_dtc = response.data[5]
-            print(f"There are {number_of_dtc} errors found after download")
+            log_info_message(logger, f"There are {number_of_dtc} errors found after download")
             return number_of_dtc
 
     def _to_json(self, status: str, no_errors):

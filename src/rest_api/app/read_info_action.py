@@ -64,11 +64,13 @@ class ReadInfo(Action):
         id = self.my_id * 0x100 + id_battery
 
         try:
+            log_info_message(logger, "Changing session to default")
             self.generate.session_control(id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             self._authentication(id)
 
+            log_info_message(logger, "Reading data from battery")
             level = self._read_by_identifier(id,0x1234)
             voltage = self._read_by_identifier(id,0x0536)
             state_of_charge = self._read_by_identifier(id,0x1d23)
@@ -82,6 +84,7 @@ class ReadInfo(Action):
             # Shutdown the CAN bus interface
             self.bus.shutdown()
 
+            log_info_message(logger, "Sending JSON")
             return response_json
 
         except CustomError as e:
@@ -98,12 +101,14 @@ class ReadInfo(Action):
         id_battery = self.id_ecu[1]
         id = self.my_id * 0x100 + id_battery
         try:
+            log_info_message(logger, "Changing session to default")
             self.generate.session_control(id, 0x01)
             self._passive_response(SESSION_CONTROL, "Error changing session control")
 
             self._authentication(id)
 
-            #Read each data from identifier            
+            #Read each data from identifier
+            log_info_message(logger, "Reading data..")         
             data_collected = []
             for identifier in identifiers:
                 data_collected.append(self._read_by_identifier(id,identifier))
@@ -113,6 +118,7 @@ class ReadInfo(Action):
             # Shutdown the CAN bus interface
             self.bus.shutdown()
 
+            log_info_message(logger, "Sending JSON")
             return response_json
 
         except CustomError as e:

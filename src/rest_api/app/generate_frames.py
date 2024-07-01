@@ -7,8 +7,11 @@ logger, logger_frame = setup_custom_logger(log_filename)
 
 @logger_frame
 class GenerateFrame:
-    def __init__(self, can_interface):
-        self.bus = can.interface.Bus(channel=can_interface, bustype='socketcan')
+    def __init__(self, bus = None):
+        if bus is None:
+            self.bus = can.interface.Bus(channel="vcan0", bustype='socketcan')
+        else:
+            self.bus = bus
 
     
     def send_frame(self, id, data):
@@ -278,18 +281,3 @@ class GenerateFrame:
             digits += 1
             number //=10
         return digits
-
-
-can_interface = "vcan0"
-id = 0x123
-data = [3,0,0,0]
-
-generateFrame = GenerateFrame(can_interface)
-
-generateFrame.read_memory_by_adress(id, 0x1234, 0x56, data)
-generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data)
-generateFrame.read_memory_by_adress_long(id, 0x1234, 0x56, data, False)
-
-
-generateFrame.bus.shutdown()
-

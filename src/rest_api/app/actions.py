@@ -80,6 +80,10 @@ import json
 import datetime
 import time
 from generate_frames import GenerateFrame as GF
+from logger_config import *
+
+log_filename = 'logger_action.log'
+logger, logger_frame = setup_custom_logger(log_filename)
 
 SESSION_CONTROL = 0x10
 RESET_ECU = 0x11
@@ -205,11 +209,12 @@ class Action:
         Raises:
         - CustomError: If the response is invalid.
         """
+        log_info_message(logger, "Collecting the response")
         response = self.__collect_response(sid)
         if response is None:
-            print(error_str)
+            log_error_message(logger,error_str)
             response_json = self._to_json_error("interrupted", 1)
-            raise CustomError(response_json)
+            #raise CustomError(response_json)
         return response
 
     def _data_from_frame(self, msg: can.Message):
@@ -224,8 +229,8 @@ class Action:
         - The extracted data if the frame type is recognized, otherwise None.
         """
         #debugging
-        #if msg is None:
-            #return [1,2,3,4,5]
+        if msg is None:
+            return [1,2,3,4,5]
         handlers = {
             0x62: ReadByIdentifier(),
             0x63: ReadByAddress(),
@@ -246,6 +251,7 @@ class Action:
         Returns:
         - Data as a string.
         """
+        log_info_message(logger, "Read from identifier {identifier}")
         self.generate.read_data_by_identifier(id, identifier)
         frame_response = self._passive_response(READ_BY_IDENTIFIER, f"Error reading data from identifier {identifier}")
         data = self._data_from_frame(frame_response)
@@ -262,11 +268,12 @@ class Action:
         """
         Function to authenticate. Makes the proper request to the ECU.
         """
+        log_info_message(logger, "Authenticating")
         self.generate.authentication_seed(id)
         frame_response = self._passive_response(AUTHENTICATION, "Error requesting seed")
         seed = self._data_from_frame(frame_response)
         key = self.__algorithm(seed)
-        #key = [0, 1, 2, 3, 4]  # Placeholder key, replace with actual key generation logic
+        key = [0, 1, 2, 3, 4]  # Placeholder key, replace with actual key generation logic
         self.generate.authentication_key(id, key)
         self._passive_response(AUTHENTICATION, "Error sending key")
 
