@@ -38,30 +38,43 @@ def setup_logger():
     return decorator
 
 
-def logger_frame(log_file):
+def setup_custom_logger(log_filename):
     """
-    Custom logger decorator that logs function calls and arguments to a specified log file.
+    Set up a custom logger that logs messages to a specified log file and provides a decorator
+    to log method calls and arguments for a class.
 
     Args:
-        log_file (str): Name of the log file where the logs will be written (e.g., 'generate_frame.log').
+        log_filename (str): Name of the log file where the logs will be written (e.g., 'app.log').
+
+    Returns:
+        logger: Configured logger instance.
+        decorator: Decorator function to log method calls and arguments.
     """
     log_directory = os.path.join(os.path.dirname(__file__), 'log')
     os.makedirs(log_directory, exist_ok=True)
-    log_path = os.path.join(log_directory, log_file)
+    log_path = os.path.join(log_directory, log_filename)
+
+    logger = logging.getLogger('custom_logger')
+    logger.setLevel(logging.DEBUG)
 
     log_handler = logging.FileHandler(log_path)
-    log_handler.setLevel(logging.INFO)
+    log_handler.setLevel(logging.DEBUG)
+
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     log_handler.setFormatter(formatter)
 
-    def decorator(cls):
+    logger.addHandler(log_handler)
+
+    logger.propagate = False
+
+    def logger_frame(cls):
         for attr_name in dir(cls):
             attr = getattr(cls, attr_name)
             if callable(attr) and not attr_name.startswith('__'):
                 setattr(cls, attr_name, log_method_calls(attr, log_handler))
         return cls
 
-    return decorator
+    return logger, logger_frame
 
 def log_method_calls(method, handler):
     """
@@ -92,3 +105,18 @@ def log_method_calls(method, handler):
         return method(self, *args, **kwargs)
 
     return wrapper
+
+def log_debug_message(logger, msg="Debug message"):
+    logger.debug(msg)
+
+def log_info_message(logger, msg="Info message"):
+    logger.info(msg)
+
+def log_warning_message(logger, msg="Warning message"):
+    logger.warning(msg)
+
+def log_error_message(logger, msg="Error message"):
+    logger.error(msg)
+
+def log_critical_message(logger, msg="Critical message"):
+    logger.critical(msg)
